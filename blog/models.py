@@ -17,7 +17,7 @@ class Blogs(models.Model):
     title = models.CharField(max_length=100)
     excerpt = models.CharField(max_length=250)
     image = models.ImageField(upload_to='blogs/')
-    date = models.DateField()
+    date = models.DateField(db_index=True)
     content = models.TextField()
     author = models.ForeignKey(author, on_delete=models.SET_NULL,related_name='posts', null=True)
     tags = models.ManyToManyField(tag)

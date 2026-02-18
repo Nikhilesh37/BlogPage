@@ -5,7 +5,12 @@ from .form import CommentForm
 from django.views import View
 from django.http import HttpResponseRedirect
 from django.urls import reverse
+from django.db.models import Prefetch
 # Create your views here.
+from django.views.decorators.cache import cache_page
+from django.utils.decorators import method_decorator
+
+@method_decorator(cache_page(60 * 15), name='dispatch')
 class StartingPageView(ListView):
     template_name = "blog/index.html"
     model = Blogs
@@ -13,7 +18,7 @@ class StartingPageView(ListView):
     
     def get_queryset(self):
         queryset = super().get_queryset()
-        data = queryset.order_by("-date")[:3]
+        data = queryset.select_related("author").prefetch_related("tags").order_by("-date")[:3]
         return data
 class PostsView(ListView):
     template_name = "blog/all_post.html"
@@ -21,7 +26,7 @@ class PostsView(ListView):
     context_object_name = "all_posts"
     def get_queryset(self):
         queryset = super().get_queryset()
-        data = queryset.order_by("-date")
+        data = queryset.select_related("author").prefetch_related("tags").order_by("-date")
         return data
 class SinglePostView(View):
     def stored_posts(self, request, post_id):
@@ -33,17 +38,27 @@ class SinglePostView(View):
             saved_for_later = post_id in stored_posts
         return saved_for_later
     def get(self, request, slug):
-        post = get_object_or_404(Blogs, slug=slug)
+        comments_queryset = Comment.objects.order_by("-id")
+        queryset = Blogs.objects.select_related("author").prefetch_related(
+            "tags",
+            Prefetch("comments", queryset=comments_queryset)
+        )
+        post = get_object_or_404(queryset, slug=slug)
         context = {
             "post":post,
             "post_tags": post.tags.all(),
             "comment_form": CommentForm(),
-            "comments": post.comments.all().order_by("-id"),
+            "comments": post.comments.all(),
             "saved_for_later": self.stored_posts(request, post.id)
         }
         return render(request, "blog/post-detail.html", context)
     def post(self, request, slug):
-        post = get_object_or_404(Blogs, slug=slug)
+        comments_queryset = Comment.objects.order_by("-id")
+        queryset = Blogs.objects.select_related("author").prefetch_related(
+            "tags",
+            Prefetch("comments", queryset=comments_queryset)
+        )
+        post = get_object_or_404(queryset, slug=slug)
         comment_form = CommentForm(request.POST)
         if comment_form.is_valid():
            comment = comment_form.save(commit=False)
@@ -54,7 +69,7 @@ class SinglePostView(View):
             "post":post,
             "post_tags": post.tags.all(),
             "comment_form": comment_form,
-            "comments": post.comments.all().order_by("-id"),
+            "comments": post.comments.all(),
              "saved_for_later": self.stored_posts(request, post.id)
         }
         return render(request, "blog/post-detail.html", context)
